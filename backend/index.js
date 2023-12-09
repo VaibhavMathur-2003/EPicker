@@ -26,7 +26,7 @@ async function scrapeFlipkartJobs(x) {
     const job_data = [];
     
     // Navigate to Flipkart based on user input 'x'
-    await driver.get(`https://www.flipkart.com/search?q=${x}&otracker=search&otracker1=search&marketplace=FLIPKART&as-show=on&as=off&sort=price_desc`);
+    await driver.get(`https://www.flipkart.com/search?q=${x}&otracker=search&otracker1=search&marketplace=FLIPKART&as-show=on&as=off&sort=price_asc`);
 
     // Wait for the job list to load
     await driver.wait(until.elementLocated(By.css('._1YokD2')), 10000);
@@ -211,31 +211,47 @@ app.post('/scrape', async (req, res) => {
   const { x } = req.body;
 
   try {
-    const scrapedDataFlipkart = await scrapeFlipkartJobs(x);
-    const scrapedDataMyntra = await scrapeMyntraShoes(x);
-    const scrapedDataAjio = await scrapeAjioShoes(x);
+    let scrapedDataFlipkart, scrapedDataMyntra, scrapedDataAjio;
 
-    // Save scraped data to respective files (or send it back to the front-end)
-    jsonfile.writeFile('Flipkart.json', scrapedDataFlipkart, { spaces: 4 }, (err) => {
-      if (err) {
-        console.error(err);
-        res.status(500).json({ error: 'Error saving Flipkart data' });
-      }
-    });
+    try {
+      scrapedDataFlipkart = await scrapeFlipkartJobs(x);
+    } catch (error) {
+      console.error('Error scraping Flipkart:', error);
+      scrapedDataFlipkart = { error: 'Failed to scrape Flipkart data' };
+    }
 
-    jsonfile.writeFile('Myntra.json', scrapedDataMyntra, { spaces: 4 }, (err) => {
-      if (err) {
-        console.error(err);
-        res.status(500).json({ error: 'Error saving Myntra data' });
-      }
-    });
+    try {
+      scrapedDataMyntra = await scrapeMyntraShoes(x);
+    } catch (error) {
+      console.error('Error scraping Myntra:', error);
+      scrapedDataMyntra = { error: 'Failed to scrape Myntra data' };
+    }
 
-    jsonfile.writeFile('Ajio_shoes.json', scrapedDataAjio, { spaces: 4 }, (err) => {
-      if (err) {
-        console.error(err);
-        res.status(500).json({ error: 'Error saving Ajio data' });
-      }
-    });
+    try {
+      scrapedDataAjio = await scrapeAjioShoes(x);
+    } catch (error) {
+      console.error('Error scraping Ajio:', error);
+      scrapedDataAjio = { error: 'Failed to scrape Ajio data' };
+    }
+
+    const writeFileAsync = (filePath, data) => {
+      return new Promise((resolve, reject) => {
+        jsonfile.writeFile(filePath, data, { spaces: 4 }, (err) => {
+          if (err) {
+            console.error(err);
+            reject(err);
+          } else {
+            resolve();
+          }
+        });
+      });
+    };
+
+    await Promise.all([
+      writeFileAsync('Flipkart.json', scrapedDataFlipkart),
+      writeFileAsync('Myntra.json', scrapedDataMyntra),
+      writeFileAsync('Ajio_shoes.json', scrapedDataAjio),
+    ]);
 
     res.json({ message: 'Data scraped and saved successfully!' });
   } catch (error) {
