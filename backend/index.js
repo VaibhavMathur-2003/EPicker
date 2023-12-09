@@ -28,7 +28,7 @@ async function scrapeFlipkartJobs(x) {
     const job_data = [];
     
     // Navigate to Flipkart based on user input 'x'
-    await driver.get(`https://www.flipkart.com/search?q=${x}&otracker=search&otracker1=search&marketplace=FLIPKART&as-show=on&as=off&sort=price_asc`);
+    await driver.get(`https://www.flipkart.com/search?q=${x}&otracker=search&otracker1=search&marketplace=FLIPKART&as-show=on&as=off&sort=price_desc`);
 
     // Wait for the job list to load
     await driver.wait(until.elementLocated(By.css('._1YokD2')), 10000);
@@ -86,7 +86,7 @@ async function scrapeMyntraShoes(x) {
   try {
     const shoe_data = [];
     
-    await driver.get(`https://www.myntra.com/{pd}?rawQuery={pd}&sort=price_asc`.replace(/{pd}/g, x));
+    await driver.get(`https://www.myntra.com/{pd}?rawQuery={pd}&sort=price_desc`.replace(/{pd}/g, x));
 
     await driver.wait(until.elementLocated(By.css(".search-searchProductsContainer")), 10000);
 
@@ -149,7 +149,7 @@ async function scrapeAjioShoes(x) {
   try {
     const shoe_data = [];
     
-    await driver.get(`https://www.ajio.com/search/?query=%3Aprce-asc&text=${x}&classifier=intent&gridColumns=3`);
+    await driver.get(`https://www.ajio.com/search/?query=%3Aprce-desc&text=${x}&classifier=intent&gridColumns=3`);
 
     await driver.wait(until.elementLocated(By.css(".items")), 10000);
 
@@ -200,6 +200,62 @@ async function scrapeAjioShoes(x) {
   }
 }
 
+async function scrapeMeesho(x) {
+  // ... (Ajio scraping logic, as provided earlier)
+  try {
+    const shoe_data = [];
+    
+    await driver.get(`https://www.meesho.com/search?q=${x}&searchType=manual&searchIdentifier=text_search&Sort[sort_by]=price&Sort[sort_order]=desc`);
+
+    await driver.wait(until.elementLocated(By.css(".sc-gswNZR")), 10000);
+
+    let cnt = 0;
+
+    while (cnt < MAX_JOBS) {
+      // Add a delay to allow content to load after scrolling
+      await driver.sleep(5000);
+
+      const shoe_elements = await driver.findElements(By.css(".ProductList__GridCol-sc-8lnc8o-0"));
+
+      for (const shoe_element of shoe_elements) {
+        try {
+          const shoe_title_element = await shoe_element.findElement(By.css('.NewProductCardstyled__StyledDesktopProductTitle-sc-6y2tys-5'));
+          const shoe_title = await shoe_title_element.getText();
+
+          const location_element = await shoe_element.findElement(By.css(".bIZpbw > h5"));
+          const shoe_location = await location_element.getText();
+
+          const image_element = await shoe_element.findElement(By.css(".NewProductCardstyled__ProductImage-sc-6y2tys-18 > img"));
+          const image_src = await image_element.getAttribute("src");
+
+          shoe_data.push({
+            Title: shoe_title.trim(),
+            Location: shoe_location.trim(),
+            Image: image_src
+          });
+
+          cnt++;
+
+          if (cnt >= MAX_JOBS) break;
+        } catch (error) {
+          console.error('Error scraping shoe details:', error);
+        }
+      }
+
+      // Handle Pagination - Uncomment below lines after implementing pagination logic
+      // const next_button = await driver.findElement(By.css('.pagination-next > a'));
+      // await next_button.click();
+
+      // await driver.wait(until.stalenessOf(shoe_elements[0]), 10000);
+    }
+
+    return shoe_data;
+  } catch (error) {
+    console.error('Error scraping Ajio:', error);
+    throw error;
+  }
+}
+
 // Set up middleware
 app.use(express.json());
 app.use(cors());
@@ -207,9 +263,9 @@ app.use(bodyParser.json());
 
 // Handle POST request for scraping data
 app.post('/scrape', async (req, res) => {
-  const { x, flipkart, myntra, ajio } = req.body; // Retrieve 'x' and checkbox values
+  const { x, flipkart, myntra, ajio, meesho } = req.body; // Retrieve 'x' and checkbox values
   try {
-    let scrapedDataFlipkart, scrapedDataMyntra, scrapedDataAjio;
+    let scrapedDataFlipkart, scrapedDataMyntra, scrapedDataAjio, scrapedDataMeesho;
 
     if(myntra){
     try {
@@ -235,7 +291,14 @@ app.post('/scrape', async (req, res) => {
       scrapedDataFlipkart = { error: 'Failed to scrape Flipkart data' };
     }
   }
-
+  if(meesho){
+    try {
+      scrapedDataMeesho = await scrapeMeesho(x);
+    } catch (error) {
+      console.error('Error scraping Meesho:', error);
+      scrapedDataMeesho = { error: 'Failed to scrape Meesho data' };
+    }
+  }
 
     const writeFileAsync = (filePath, data) => {
       return new Promise((resolve, reject) => {
@@ -268,6 +331,11 @@ app.post('/scrape', async (req, res) => {
     } else {
       tasks.push(writeFileAsync('Ajio_shoes.json', scrapedDataAjio));
     }
+    if (!meesho) {
+      tasks.push(writeFileAsync('Meesho.json', []));
+    } else {
+      tasks.push(writeFileAsync('Meesho.json', scrapedDataMeesho));
+    }
     
     await Promise.all(tasks);
     
@@ -284,13 +352,14 @@ app.get('/scrapedData', async (req, res) => {
     const scrapedDataMyntra = await jsonfile.readFile('Myntra.json');
     const scrapedDataAjio = await jsonfile.readFile('Ajio_shoes.json');
     const scrapedDataFlipkart = await jsonfile.readFile('Flipkart.json');
+    const scrapedDataMeesho = await jsonfile.readFile('Meesho.json');
 
 
     const allScrapedData = {
       Myntra: scrapedDataMyntra,
       Ajio: scrapedDataAjio,
       Flipkart: scrapedDataFlipkart,
-
+      Meesho: scrapedDataMeesho
     };
 
     res.json(allScrapedData);
