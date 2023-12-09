@@ -19,6 +19,8 @@ const driver = new Builder()
   .setFirefoxOptions(firefoxOptions)
   .build();
 
+
+const MAX_JOBS = 10
 // Function to scrape Flipkart job details
 async function scrapeFlipkartJobs(x) {
   // ... (Flipkart scraping logic, as provided earlier)
@@ -32,7 +34,6 @@ async function scrapeFlipkartJobs(x) {
     await driver.wait(until.elementLocated(By.css('._1YokD2')), 10000);
 
     let cnt = 0;
-    const MAX_JOBS = 10;
 
     while (cnt < MAX_JOBS) {
       const job_elements = await driver.findElements(By.css('._1xHGtK'));
@@ -90,9 +91,8 @@ async function scrapeMyntraShoes(x) {
     await driver.wait(until.elementLocated(By.css(".search-searchProductsContainer")), 10000);
 
     let cnt = 0;
-    const MAX_SHOES = 10;
 
-    while (cnt < MAX_SHOES) {
+    while (cnt < MAX_JOBS) {
       const shoe_elements = await driver.findElements(By.css(".product-base"));
 
       for (const shoe_element of shoe_elements) {
@@ -114,7 +114,7 @@ async function scrapeMyntraShoes(x) {
 
           cnt++;
 
-          if (cnt >= MAX_SHOES) break;
+          if (cnt >= MAX_JOBS) break;
         } catch (error) {
           console.error('Error scraping shoe details:', error);
         }
@@ -154,9 +154,8 @@ async function scrapeAjioShoes(x) {
     await driver.wait(until.elementLocated(By.css(".items")), 10000);
 
     let cnt = 0;
-    const MAX_SHOES = 10;
 
-    while (cnt < MAX_SHOES) {
+    while (cnt < MAX_JOBS) {
       // Add a delay to allow content to load after scrolling
       await driver.sleep(5000);
 
@@ -181,7 +180,7 @@ async function scrapeAjioShoes(x) {
 
           cnt++;
 
-          if (cnt >= MAX_SHOES) break;
+          if (cnt >= MAX_JOBS) break;
         } catch (error) {
           console.error('Error scraping shoe details:', error);
         }
@@ -208,31 +207,35 @@ app.use(bodyParser.json());
 
 // Handle POST request for scraping data
 app.post('/scrape', async (req, res) => {
-  const { x } = req.body;
-
+  const { x, flipkart, myntra, ajio } = req.body; // Retrieve 'x' and checkbox values
   try {
     let scrapedDataFlipkart, scrapedDataMyntra, scrapedDataAjio;
 
-    try {
-      scrapedDataFlipkart = await scrapeFlipkartJobs(x);
-    } catch (error) {
-      console.error('Error scraping Flipkart:', error);
-      scrapedDataFlipkart = { error: 'Failed to scrape Flipkart data' };
-    }
-
+    if(myntra){
     try {
       scrapedDataMyntra = await scrapeMyntraShoes(x);
     } catch (error) {
       console.error('Error scraping Myntra:', error);
       scrapedDataMyntra = { error: 'Failed to scrape Myntra data' };
     }
-
+  }
+    if(ajio){
     try {
       scrapedDataAjio = await scrapeAjioShoes(x);
     } catch (error) {
       console.error('Error scraping Ajio:', error);
       scrapedDataAjio = { error: 'Failed to scrape Ajio data' };
     }
+  }
+  if(flipkart){
+    try {
+      scrapedDataFlipkart = await scrapeFlipkartJobs(x);
+    } catch (error) {
+      console.error('Error scraping Flipkart:', error);
+      scrapedDataFlipkart = { error: 'Failed to scrape Flipkart data' };
+    }
+  }
+
 
     const writeFileAsync = (filePath, data) => {
       return new Promise((resolve, reject) => {
@@ -246,13 +249,28 @@ app.post('/scrape', async (req, res) => {
         });
       });
     };
+    const tasks = [];
 
-    await Promise.all([
-      writeFileAsync('Flipkart.json', scrapedDataFlipkart),
-      writeFileAsync('Myntra.json', scrapedDataMyntra),
-      writeFileAsync('Ajio_shoes.json', scrapedDataAjio),
-    ]);
-
+    if (!flipkart) {
+      tasks.push(writeFileAsync('Flipkart.json', []));
+    } else {
+      tasks.push(writeFileAsync('Flipkart.json', scrapedDataFlipkart));
+    }
+    
+    if (!myntra) {
+      tasks.push(writeFileAsync('Myntra.json', []));
+    } else {
+      tasks.push(writeFileAsync('Myntra.json', scrapedDataMyntra));
+    }
+    
+    if (!ajio) {
+      tasks.push(writeFileAsync('Ajio_shoes.json', []));
+    } else {
+      tasks.push(writeFileAsync('Ajio_shoes.json', scrapedDataAjio));
+    }
+    
+    await Promise.all(tasks);
+    
     res.json({ message: 'Data scraped and saved successfully!' });
   } catch (error) {
     console.error('Error scraping data:', error);
@@ -263,14 +281,16 @@ app.post('/scrape', async (req, res) => {
 // Handle GET request to retrieve scraped data
 app.get('/scrapedData', async (req, res) => {
   try {
-    const scrapedDataFlipkart = await jsonfile.readFile('Flipkart.json');
     const scrapedDataMyntra = await jsonfile.readFile('Myntra.json');
     const scrapedDataAjio = await jsonfile.readFile('Ajio_shoes.json');
+    const scrapedDataFlipkart = await jsonfile.readFile('Flipkart.json');
+
 
     const allScrapedData = {
-      Flipkart: scrapedDataFlipkart,
       Myntra: scrapedDataMyntra,
-      Ajio: scrapedDataAjio
+      Ajio: scrapedDataAjio,
+      Flipkart: scrapedDataFlipkart,
+
     };
 
     res.json(allScrapedData);
